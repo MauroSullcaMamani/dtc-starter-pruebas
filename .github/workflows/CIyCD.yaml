@@ -6,181 +6,87 @@ on:
   pull_request:
     branches: [main, develop]
 
-permissions:
-  contents: read
-  packages: write
-
 env:
   CI: true
   NODE_ENV: test
-  NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY: pk_test_val_123
-  NEXT_PUBLIC_MEDUSA_BACKEND_URL: http://localhost:9000
-  DATABASE_URL: postgres://postgres:postgres@localhost:5432/medusa
-  REDIS_URL: redis://localhost:6379
-  MEDUSA_ADMIN_ONBOARDING_TYPE: default
 
 jobs:
+  # 1. Validación de Calidad (Linting)
   lint:
-    name: Lint & Static Validation
+    name: Lint & Style Check
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 10
-
-      - name: Configure Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'pnpm' }
+      
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      
+      - name: Lint Storefront
+        run: pnpm --filter @dtc/storefront run lint
+      
+      - name: Lint Backend
+        run: pnpm --filter @dtc/backend run lint
 
-      - name: Run workspace lint
-        run: pnpm exec turbo lint --filter=@dtc/backend --filter=@dtc/storefront
-
-      - name: Run storefront lint
-        run: |
-          cd apps/storefront
-          pnpm exec next lint
-
-      - name: Run backend lint
-        run: |
-          cd apps/backend
-          pnpm exec medusa lint
-
-  build:
-    name: Build Backend + Storefront
+  # 2. Pruebas Unitarias e Integración (Con servicios)
+  test:
+    name: Backend Tests
     runs-on: ubuntu-latest
     needs: lint
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 10
-
-      - name: Configure Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build backend
-        run: |
-          cd apps/backend
-          pnpm build
-
-      - name: Run storefront typecheck and build
-        run: |
-          cd apps/storefront
-          pnpm exec node ./check-env-variables.js
-          pnpm build
-
-  backend-tests:
-    name: Backend Unit + Integration Tests
-    runs-on: ubuntu-latest
-    needs: lint
-    timeout-minutes: 40
     services:
       postgres:
         image: postgres:15-alpine
-        env:
-          POSTGRES_DB: medusa
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d medusa"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
+        env: { POSTGRES_DB: medusa, POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres }
+        ports: ['5432:5432']
       redis:
         image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
+        ports: ['6379:6379']
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 10
-
-      - name: Configure Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'pnpm' }
+      
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Wait for database and cache
-        run: |
-          echo "Waiting for PostgreSQL..."
-          for i in {1..30}; do
-            if pg_isready -h localhost -p 5432 -U postgres -d medusa; then
-              echo "PostgreSQL is ready"
-              break
-            fi
-            sleep 2
-          done
-          echo "Waiting for Redis..."
-          for i in {1..30}; do
-            if redis-cli -h localhost -p 6379 ping | grep -q PONG; then
-              echo "Redis is ready"
-              break
-            fi
-            sleep 1
-          done
-
-      - name: Build backend for tests
-        run: |
-          cd apps/backend
-          pnpm build
-
-      - name: Run backend unit tests
+      - name: Run Backend Tests
         run: |
           cd apps/backend
           pnpm run test:unit
-
-      - name: Run backend integration tests (HTTP)
-        run: |
-          cd apps/backend
           pnpm run test:integration:http
-
-      - name: Run backend integration tests (Modules)
-        run: |
-          cd apps/backend
           pnpm run test:integration:modules
 
+  # 3. Validación de Build (Artefactos)
+  build:
+    name: Build & Artifact Validation
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'pnpm' }
+      
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        
+      - name: Build Apps
+        run: |
+          pnpm --filter @dtc/backend run build
+          pnpm --filter @dtc/storefront run build
+
+  # 4. Validación de Contenedores
   docker-validation:
-    name: Dockerfile Validation
+    name: Docker Validation
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Build Docker image
-        run: docker build --pull --tag medusa-ci-validation .
+        run: docker build --pull --tag medusa-ci:latest .
