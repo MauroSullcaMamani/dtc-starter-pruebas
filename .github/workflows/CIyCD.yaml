@@ -28,10 +28,10 @@ jobs:
         run: pnpm install --frozen-lockfile
       
       - name: Lint Storefront
-        run: pnpm --filter @dtc/storefront run lint || true
+        run: pnpm --dir apps/storefront exec next lint
       
       - name: Lint Backend
-        run: pnpm --filter @dtc/backend run lint || true
+        run: pnpm --dir apps/backend exec medusa lint
 
   test:
     name: Backend Tests
@@ -45,6 +45,9 @@ jobs:
       redis:
         image: redis:7-alpine
         ports: ['6379:6379']
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/medusa
+      REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v3
