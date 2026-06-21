@@ -9,9 +9,11 @@ on:
 env:
   CI: true
   NODE_ENV: test
+  # Referencia a los secretos configurados en el repositorio
+  NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY: ${{ secrets.MEDUSA_PUBLISHABLE_KEY }}
+  NEXT_PUBLIC_MEDUSA_BACKEND_URL: ${{ secrets.MEDUSA_BACKEND_URL }}
 
 jobs:
-  # 1. Validación de Calidad (Linting)
   lint:
     name: Lint & Style Check
     runs-on: ubuntu-latest
@@ -31,7 +33,6 @@ jobs:
       - name: Lint Backend
         run: pnpm --filter @dtc/backend run lint
 
-  # 2. Pruebas Unitarias e Integración (Con servicios)
   test:
     name: Backend Tests
     runs-on: ubuntu-latest
@@ -61,7 +62,6 @@ jobs:
           pnpm run test:integration:http
           pnpm run test:integration:modules
 
-  # 3. Validación de Build (Artefactos)
   build:
     name: Build & Artifact Validation
     runs-on: ubuntu-latest
@@ -81,7 +81,6 @@ jobs:
           pnpm --filter @dtc/backend run build
           pnpm --filter @dtc/storefront run build
 
-  # 4. Validación de Contenedores
   docker-validation:
     name: Docker Validation
     runs-on: ubuntu-latest
