@@ -28,7 +28,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       
       - name: Lint Storefront
-        run: pnpm --dir apps/storefront exec next lint
+        run: pnpm --dir apps/storefront exec eslint . --ext .ts,.tsx,.js,.jsx
       
       - name: Lint Backend
         run: pnpm --dir apps/backend exec medusa lint
